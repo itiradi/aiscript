@@ -153,21 +153,21 @@ export class AiScript {
 				const cond = await this._eval(node.cond, scope);
 				assertBoolean(cond);
 				if (cond.value) {
-					return this._run(node.then, scope.createChildScope());
+					return this._eval(node.then, scope);
 				} else {
 					if (node.elseif && node.elseif.length > 0) {
 						for (const elseif of node.elseif) {
 							const cond = await this._eval(elseif.cond, scope);
 							assertBoolean(cond);
 							if (cond.value) {
-								return this._run(elseif.then, scope.createChildScope());
+								return this._eval(elseif.then, scope);
 							}
 						}
 						if (node.else) {
-							return this._run(node.else, scope.createChildScope());
+							return this._eval(node.else, scope);
 						}
 					} else if (node.else) {
-						return this._run(node.else, scope.createChildScope());
+						return this._eval(node.else, scope);
 					}
 				}
 				return NULL;
@@ -193,7 +193,7 @@ export class AiScript {
 					const times = await this._eval(node.times, scope);
 					assertNumber(times);
 					for (let i = 1; i < times.value + 1; i++) {
-						const v = await this._run(node.s, scope);
+						const v = await this._eval(node.for, scope);
 						result.push(v);
 					}
 				} else {
@@ -202,7 +202,7 @@ export class AiScript {
 					assertNumber(from);
 					assertNumber(to);
 					for (let i = from.value + 1; i < to.value + 1; i++) {
-						const v = await this._run(node.s, scope.createChildScope(new Map([
+						const v = await this._eval(node.for, scope.createChildScope(new Map([
 							[node.var!, NUM(i)]
 						])));
 						result.push(v);
@@ -216,7 +216,7 @@ export class AiScript {
 				const items = await this._eval(node.items!, scope);
 				assertArray(items);
 				for (const item of items.value) {
-					const v = await this._run(node.s, scope.createChildScope(new Map([
+					const v = await this._eval(node.for, scope.createChildScope(new Map([
 						[node.var!, item]
 					])));
 					result.push(v);
@@ -321,12 +321,14 @@ export class AiScript {
 				return STR(str);
 			}
 
+			case 'return': {
+				const val = await this._eval(node.expr, scope);
+				this.log('block:return', { scope: scope.name, val: val });
+				return RETURN(val);
+			}
+
 			case 'ns': {
 				return NULL; // nop
-			}
-		
-			default: {
-				throw new Error('unknown ast type: ' + node.type);
 			}
 		}
 	}
@@ -340,21 +342,10 @@ export class AiScript {
 		for (let i = 0; i < program.length; i++) {
 			const node = program[i];
 
-			switch (node.type) {
-				case 'return': {
-					const val = await this._eval(node.expr, scope);
-					this.log('block:return', { scope: scope.name, val: val });
-					return RETURN(val);
-				}
-
-				default: {
-					v = await this._eval(node, scope);
-					if (v.type === 'return') {
-						this.log('block:return', { scope: scope.name, val: v.value });
-						return v;
-					}
-					break;
-				}
+			v = await this._eval(node, scope);
+			if (v.type === 'return') {
+				this.log('block:return', { scope: scope.name, val: v.value });
+				return v;
 			}
 		}
 

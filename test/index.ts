@@ -47,16 +47,6 @@ it('var', async () => {
 	eq(res, NUM(42));
 });
 
-it('Fn call with no args', async () => {
-	const res = await exe(`
-	@f() {
-		42
-	}
-	<: f()
-	`);
-	eq(res, NUM(42));
-});
-
 it('Closure', async () => {
 	const res = await exe(`
 	@store(v) {
@@ -94,76 +84,10 @@ it('Closure (counter)', async () => {
 	eq(res, NUM(3));
 });
 
-it('Early return', async () => {
-	const res = await exe(`
-	@f() {
-		? yes {
-			<< "ai"
-		}
-
-		"pope"
-	}
-	<: f()
-	`);
-	eq(res, STR('ai'));
-});
-
-it('Early return (nested)', async () => {
-	const res = await exe(`
-	@f() {
-		? yes {
-			? yes {
-				<< "ai"
-			}
-		}
-
-		"pope"
-	}
-	<: f()
-	`);
-	eq(res, STR('ai'));
-});
-
-it('Early return (nested) 2', async () => {
-	const res = await exe(`
-	@f() {
-		? yes {
-			<< "ai"
-		}
-
-		"pope"
-	}
-
-	@g() {
-		? (f() = "ai") {
-			<< "kawaii"
-		}
-
-		"pope"
-	}
-
-	<: g()
-	`);
-	eq(res, STR('kawaii'));
-});
-
-it('Block returns value', async () => {
-	const res = await exe(`
-	#foo = {
-		#a = 1
-		#b = 2
-		(a + b)
-	}
-
-	<: foo
-	`);
-	eq(res, NUM(3));
-});
-
 it('Recursion', async () => {
 	const res = await exe(`
 	@fact(n) {
-		? (n = 0) { 1 } ... { (fact((n - 1)) * n) }
+		? (n = 0) { 1 } . { (fact((n - 1)) * n) }
 	}
 
 	<: fact(5)
@@ -287,14 +211,14 @@ it('SKI', async () => {
 
 		// extract
 		@x(v) {
-			? (Core:type(v) = "arr") { c(v) } ... { v }
+			? (Core:type(v) = "arr") { c(v) } . { v }
 		}
 
 		// rec
 		@r(f, n) {
 			? (n < L) {
 				r(f(x(l[n])), (n + 1))
-			} ... { f }
+			} . { f }
 		}
 
 		r(x(l[1]), 2)
@@ -304,6 +228,130 @@ it('SKI', async () => {
 	c([sksik, "foo", print])
 	`);
 	eq(res, STR('foo'));
+});
+
+describe('Function call', () => {
+	it('without args', async () => {
+		const res = await exe(`
+		@f() {
+			42
+		}
+		<: f()
+		`);
+		eq(res, NUM(42));
+	});
+
+	it('with args', async () => {
+		const res = await exe(`
+		@f(x) {
+			x
+		}
+		<: f(42)
+		`);
+		eq(res, NUM(42));
+	});
+
+	it('with args (separated by comma)', async () => {
+		const res = await exe(`
+		@f(x, y) {
+			(x + y)
+		}
+		<: f(1, 1)
+		`);
+		eq(res, NUM(2));
+	});
+
+	it('with args (separated by space)', async () => {
+		const res = await exe(`
+		@f(x y) {
+			(x + y)
+		}
+		<: f(1 1)
+		`);
+		eq(res, NUM(2));
+	});
+});
+
+describe('Return', () => {
+	it('Early return', async () => {
+		const res = await exe(`
+		@f() {
+			? yes {
+				<< "ai"
+			}
+
+			"pope"
+		}
+		<: f()
+		`);
+		eq(res, STR('ai'));
+	});
+
+	it('Early return (nested)', async () => {
+		const res = await exe(`
+		@f() {
+			? yes {
+				? yes {
+					<< "ai"
+				}
+			}
+
+			"pope"
+		}
+		<: f()
+		`);
+		eq(res, STR('ai'));
+	});
+
+	it('Early return (nested) 2', async () => {
+		const res = await exe(`
+		@f() {
+			? yes {
+				<< "ai"
+			}
+
+			"pope"
+		}
+
+		@g() {
+			? (f() = "ai") {
+				<< "kawaii"
+			}
+
+			"pope"
+		}
+
+		<: g()
+		`);
+		eq(res, STR('kawaii'));
+	});
+
+	it('Early return without block', async () => {
+		const res = await exe(`
+		@f() {
+			? yes << "ai"
+
+			"pope"
+		}
+		<: f()
+		`);
+		eq(res, STR('ai'));
+	});
+});
+
+describe('Block', () => {
+	it('returns value', async () => {
+		const res = await exe(`
+		#foo = {
+			#a = 1
+			#b = 2
+			(a + b)
+		}
+	
+		<: foo
+		`);
+		eq(res, NUM(3));
+	});
 });
 
 describe('if', () => {
@@ -327,12 +375,12 @@ describe('if', () => {
 		eq(res2, STR('ai'));
 	});
 
-	it('...', async () => {
+	it('.', async () => {
 		const res1 = await exe(`
 		$msg <- _
 		? yes {
 			msg <- "ai"
-		} ... {
+		} . {
 			msg <- "kawaii"
 		}
 		<: msg
@@ -343,7 +391,7 @@ describe('if', () => {
 		$msg <- _
 		? no {
 			msg <- "ai"
-		} ... {
+		} . {
 			msg <- "kawaii"
 		}
 		<: msg
@@ -351,12 +399,12 @@ describe('if', () => {
 		eq(res2, STR('kawaii'));
 	});
 
-	it('...?', async () => {
+	it('.?', async () => {
 		const res1 = await exe(`
 		$msg <- "bebeyo"
 		? no {
 			msg <- "ai"
-		} ...? yes {
+		} .? yes {
 			msg <- "kawaii"
 		}
 		<: msg
@@ -367,7 +415,7 @@ describe('if', () => {
 		$msg <- "bebeyo"
 		? no {
 			msg <- "ai"
-		} ...? no {
+		} .? no {
 			msg <- "kawaii"
 		}
 		<: msg
@@ -375,14 +423,14 @@ describe('if', () => {
 		eq(res2, STR('bebeyo'));
 	});
 
-	it('...? ...', async () => {
+	it('.? .', async () => {
 		const res1 = await exe(`
 		$msg <- _
 		? no {
 			msg <- "ai"
-		} ...? yes {
+		} .? yes {
 			msg <- "chan"
-		} ... {
+		} . {
 			msg <- "kawaii"
 		}
 		<: msg
@@ -393,12 +441,24 @@ describe('if', () => {
 		$msg <- _
 		? no {
 			msg <- "ai"
-		} ...? no {
+		} .? no {
 			msg <- "chan"
-		} ... {
+		} . {
 			msg <- "kawaii"
 		}
 		<: msg
+		`);
+		eq(res2, STR('kawaii'));
+	});
+
+	it('expr', async () => {
+		const res1 = await exe(`
+		<: ? yes "ai" . "kawaii"
+		`);
+		eq(res1, STR('ai'));
+
+		const res2 = await exe(`
+		<: ? no "ai" . "kawaii"
 		`);
 		eq(res2, STR('kawaii'));
 	});
@@ -502,6 +562,14 @@ describe('for', () => {
 		`);
 		eq(res, ARR([NUM(1), NUM(2), NUM(3), NUM(4), NUM(5)]));
 	});
+
+	it('returns value (without block)', async () => {
+		const res = await exe(`
+		#items = ~ #i, 5 i
+		<: items
+		`);
+		eq(res, ARR([NUM(1), NUM(2), NUM(3), NUM(4), NUM(5)]));
+	});
 });
 
 describe('for of', () => {
@@ -553,6 +621,20 @@ describe('literal', () => {
 	it('bool (false)', async () => {
 		const res = await exe(`
 		<: no
+		`);
+		eq(res, BOOL(false));
+	});
+
+	it('bool (true) +', async () => {
+		const res = await exe(`
+		<: +
+		`);
+		eq(res, BOOL(true));
+	});
+
+	it('bool (false) -', async () => {
+		const res = await exe(`
+		<: -
 		`);
 		eq(res, BOOL(false));
 	});
@@ -736,6 +818,29 @@ describe('std', () => {
 				ARR([STR('b'), NUM(2)]),
 				ARR([STR('c'), NUM(3)])
 			]));
+		});
+	});
+
+	describe('Str', () => {
+		it('len', async () => {
+			const res = await exe(`
+			<: Str:len("👍🏽🍆🌮")
+			`);
+			eq(res, NUM(3));
+		});
+
+		it('pick', async () => {
+			const res = await exe(`
+			<: Str:pick("👍🏽🍆🌮", 2)
+			`);
+			eq(res, STR('🍆'));
+		});
+		
+		it('split', async () => {
+			const res = await exe(`
+			<: Str:split("👍🏽🍆🌮")
+			`);
+			eq(res, ARR([STR('👍🏽'), STR('🍆'), STR('🌮')]));
 		});
 	});
 });

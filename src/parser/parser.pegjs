@@ -36,8 +36,6 @@ Statements
 Statement
 	= VarDef
 	/ Assign
-	/ Return
-	/ Out
 	/ FnDef
 	/ Namespace
 	/ Debug
@@ -47,6 +45,8 @@ Expr
 	= PropCall
 	/ PropRef
 	/ IndexRef
+	/ Return
+	/ Out
 	/ If
 	/ Match
 	/ For
@@ -88,16 +88,6 @@ VarDef
 Assign
 	= name:NAME _ "<-" _ expr:Expr
 { return createNode('assign', { name, expr }); }
-
-// statement of return
-Return
-	= "<<" _ expr:Expr
-{ return createNode('return', { expr }); }
-
-// syntax suger of print()
-Out
-	= "<:" _ expr:Expr
-{ return createNode('call', { name: 'print', args: [expr] }); }
 
 Debug
 	= "<<<" _ expr:Expr
@@ -153,9 +143,9 @@ StrEsc
 
 // boolean literal
 Bool
-	= "yes" ![A-Z0-9_]i
+	= ("yes" / "+") ![A-Z0-9_]i
 { return createNode('bool', { value: true }); }
-	/ "no" ![A-Z0-9_]i
+	/ ("no" / "-") ![A-Z0-9_]i
 { return createNode('bool', { value: false }); }
 
 // array literal
@@ -184,10 +174,20 @@ Block
 	= "{" _ s:Statements _ "}"
 { return createNode('block', { statements: s }); }
 
+// return
+Return
+	= "<<" _ expr:Expr
+{ return createNode('return', { expr }); }
+
+// syntax suger of print()
+Out
+	= "<:" _ expr:Expr
+{ return createNode('call', { name: 'print', args: [expr] }); }
+
 // function ------------------------------------------------------------------------------
 
 Args
-	= head:NAME_WITH_NAMESPACE tails:(_ "," _ name:NAME_WITH_NAMESPACE { return name; })*
+	= head:NAME_WITH_NAMESPACE tails:(","? ___ name:NAME_WITH_NAMESPACE { return name; })*
 { return [head, ...tails]; }
 
 // statement of function definition
@@ -210,7 +210,7 @@ Call
 { return createNode('call', { name, args: args || [] }); }
 
 CallArgs
-	= head:Expr tails:(_ "," _ expr:Expr { return expr; })*
+	= head:Expr tails:(","? ___ expr:Expr { return expr; })*
 { return [head, ...tails]; }
 
 // syntax sugers of operator function call
@@ -232,13 +232,13 @@ Op
 // if statement --------------------------------------------------------------------------
 
 If
-	= "?" _ cond:Expr _ "{" _ then:Statements? _ "}" elseif:(_ b:ElseifBlocks { return b; })? elseBlock:(_ b:ElseBlock { return b; })?
+	= "?" ___ cond:Expr ___ then:Expr elseif:(___ b:ElseifBlocks { return b; })? elseBlock:(___ b:ElseBlock { return b; })?
 {
 	return createNode('if', {
 		cond: cond,
-		then: then || [],
+		then: then,
 		elseif: elseif || [],
-		else: elseBlock || []
+		else: elseBlock
 	});
 }
 
@@ -247,11 +247,11 @@ ElseifBlocks
 { return [head, ...tails]; }
 
 ElseifBlock
-	= "...?" _ cond:Expr _ "{" _ then:Statements? _ "}"
+	= "."+ "?" _ cond:Expr _ then:Expr
 { return { cond, then }; }
 
 ElseBlock
-	= "..." _ "{" _ then:Statements? _ "}"
+	= "."+ _ then:Expr
 { return then; }
 
 // match --------------------------------------------------------------------------
@@ -269,32 +269,35 @@ Match
 // for statement -------------------------------------------------------------------------
 
 For
-	= "~" ___ "#" varn:NAME _ from:("=" _ v:Expr { return v; })? ","? _ to:Expr ___ "{" _ s:Statements _ "}"
+	= "~" _ "(" "#" varn:NAME _ from:("=" _ v:Expr { return v; })? ","? _ to:Expr ")" ___ x:Expr
+	/ "~" ___ "#" varn:NAME _ from:("=" _ v:Expr { return v; })? ","? _ to:Expr ___ x:Expr
 {
 	return createNode('for', {
 		var: varn,
 		from: from || createNode('num', { value: 0 }),
 		to: to,
-		s: s,
+		for: x,
 	});
 }
-	/ "~" ___ times:Expr ___ "{" _ s:Statements _ "}"
+	/ "~" _ "(" times:Expr ")" ___ x:Expr
+	/ "~" ___ times:Expr ___ x:Expr
 {
 	return createNode('for', {
 		times: times,
-		s: s,
+		for: x,
 	});
 }
 
 // for of statement -------------------------------------------------------------------------
 
 ForOf
-	= "~~" ___ "#" varn:NAME _ ","? _ items:Expr ___ "{" _ s:Statements _ "}"
+	= "~~" _ "(" "#" varn:NAME _ ","? _ items:Expr ")" ___ x:Expr
+	/ "~~" ___ "#" varn:NAME _ ","? _ items:Expr ___ x:Expr
 {
 	return createNode('forOf', {
 		var: varn,
 		items: items,
-		s: s,
+		for: x,
 	});
 }
 
